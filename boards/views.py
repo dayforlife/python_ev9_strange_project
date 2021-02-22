@@ -3,9 +3,9 @@ from .models import Board, Post, Topic
 from .forms import NewTopicForm, PostForm
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
-from django.views.generic import ListView, DetailView, CreateView
+from django.views.generic import ListView, DetailView, CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-
+from django.utils import timezone
 
 # def home(request):
 #     boards = Board.objects.all()
@@ -27,7 +27,7 @@ class BoardsListView(ListView):
 class BoardDetailTopicListView(DetailView):
     model = Board
     template_name = 'topics.html'
-    context_object_name = 'board'
+    context_object_name = 'board' # Board.objects.get(pk=pk)
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -60,7 +60,7 @@ class NewTopicView(CreateView, LoginRequiredMixin):
     model = Topic
     template_name = 'new_topic.html'
     form_class = NewTopicForm
-    context_object_name = 'form'
+    context_object_name = 'form' 
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -85,8 +85,27 @@ def topic_posts(request, pk, topic_pk):
     topic = get_object_or_404(Topic, board__pk=pk, pk=topic_pk)
     topic.views += 1
     topic.save()
-    return render(request, 'topic_posts.html', locals())
+    return render(request, 'topic_posts.html', locals()) # {'posts}: posts
 
+
+class PostListView(ListView):
+    model = Post
+    context_object_name = 'posts' # Post.objects.all()
+    template_name = 'topic_posts.html'
+    paginate_by = 4
+
+    def get_queryset(self):
+        self.topic = get_object_or_404(Topic, board__pk=self.kwargs.get('pk'), pk=self.kwargs.get('topic_pk'))
+        queryset = self.topic.posts.order_by('created_at')
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['topic'] = self.topic
+        self.topic.views += 1
+        self.topic.save()
+        return context
+    
 
 @login_required
 def reply_topic(request, pk, topic_pk):
@@ -102,6 +121,22 @@ def reply_topic(request, pk, topic_pk):
     else:
         form = PostForm()
     return render(request, 'reply_topic.html', locals())
+
+
+
+class EditPostView(UpdateView):
+    model = Post
+    template_name = 'edit_post.html'
+    context_object_name = 'post'
+    fields = ('message', )
+    pk_url_kwarg = 'post_pk'
+
+    def form_valid(self, form):
+        post = form.save(commit=False)
+        post.updated_by = self.request.user
+        post.updated_at = timezone.now()
+        post.save()
+        return redirect('topic_posts', pk=post.topic.board.pk, topic_pk=post.topic.pk)
 
 
 # def new_post(request):
