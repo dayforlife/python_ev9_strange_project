@@ -3,38 +3,82 @@ from .models import Board, Post, Topic
 from .forms import NewTopicForm, PostForm
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
+from django.views.generic import ListView, DetailView, CreateView
+from django.contrib.auth.mixins import LoginRequiredMixin
 
 
-def home(request):
-    boards = Board.objects.all()
-    return render(request, 'home.html', locals())
+# def home(request):
+#     boards = Board.objects.all()
+#     return render(request, 'home.html', locals())
 
 
-def board_topics(request, pk):
-    board = get_object_or_404(Board, pk=pk)
-    topics = board.topics.order_by('-last_updated').annotate(replies=Count('posts'))
-    return render(request, 'topics.html', locals())
+class BoardsListView(ListView):
+    model = Board
+    template_name = 'home.html'
+    context_object_name = 'boards'
 
 
-@login_required
-def new_topic(request, pk):
-    board = get_object_or_404(Board, pk=pk)
-    if request.method == 'POST':
-        form = NewTopicForm(request.POST)
-        if form.is_valid(): 
-            topic = form.save(commit=False)
-            topic.board = board
-            topic.starter = request.user
-            topic.save()
-            post = Post.objects.create(
-                message=form.cleaned_data.get('message'),
-                topic=topic,
-                created_by=request.user
-            )
-            return redirect('topic_posts', pk=pk, topic_pk=topic.pk)
-    else:
-        form = NewTopicForm()
-    return render(request, 'new_topic.html', locals())
+# def board_topics(request, pk):
+#     board = get_object_or_404(Board, pk=pk)
+#     topics = board.topics.order_by('-last_updated').annotate(replies=Count('posts'))
+#     return render(request, 'topics.html', locals())
+
+
+class BoardDetailTopicListView(DetailView):
+    model = Board
+    template_name = 'topics.html'
+    context_object_name = 'board'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['topics'] = self.get_object().topics.order_by('-last_updated').annotate(replies=Count('posts'))
+        return context
+
+
+# @login_required
+# def new_topic(request, pk):
+#     board = get_object_or_404(Board, pk=pk)
+#     if request.method == 'POST':
+#         form = NewTopicForm(request.POST)
+#         if form.is_valid(): 
+#             topic = form.save(commit=False)
+#             topic.board = board
+#             topic.starter = request.user
+#             topic.save()
+#             post = Post.objects.create(
+#                 message=form.cleaned_data.get('message'),
+#                 topic=topic,
+#                 created_by=request.user
+#             )
+#             return redirect('topic_posts', pk=pk, topic_pk=topic.pk)
+#     else:
+#         form = NewTopicForm()
+#     return render(request, 'new_topic.html', locals())
+
+
+class NewTopicView(CreateView, LoginRequiredMixin):
+    model = Topic
+    template_name = 'new_topic.html'
+    form_class = NewTopicForm
+    context_object_name = 'form'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['board'] = Board.objects.get(pk=self.kwargs.get('pk'))
+        return context
+
+    def form_valid(self, form):
+        topic = form.save(commit=False)
+        board_pk =  Board.objects.get(pk=self.kwargs.get('pk'))
+        topic.board =board_pk
+        topic.starter = self.request.user
+        topic.save()
+        post = Post.objects.create(
+            message=form.cleaned_data.get('message'),
+            topic=topic,
+            created_by=self.request.user
+        )
+        return redirect('topic_posts', pk=board_pk, topic_pk=topic.pk)
 
 
 def topic_posts(request, pk, topic_pk):
@@ -58,3 +102,35 @@ def reply_topic(request, pk, topic_pk):
     else:
         form = PostForm()
     return render(request, 'reply_topic.html', locals())
+
+
+# def new_post(request):
+#     if request.method == 'POST':
+#         form = PostForm(request.POST)
+#         if form.is_valid():
+#             form.save()
+#             return redirect('post_list')
+#     else:
+#         form = PostForm()
+#     return render(request, 'new_post.html', {})
+
+
+# class NewPostView(View):
+#     def render(self, request):
+#         return render(request, 'new_post.html', {'form': form})
+
+#     def post(self, request):
+#         form = PostForm(request.POST)
+#         if form.is_valid():
+#             form.save()
+#             return redirect('home')
+#         return self.render(request)
+
+#     def get(self, request):
+#         form = PostForm()
+#         return self.render(request)
+
+
+
+
+
